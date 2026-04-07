@@ -102,6 +102,8 @@ All output is in `~/screen-capture/`:
 │   ├── slack-triage.md
 │   ├── meeting-prep.md
 │   └── ...
+├── weekly/                     # Weekly summaries (auto-generated when 5+ daily digests exist)
+│   └── 2026-W15.md
 └── logs/                       # Daemon and analysis logs
 ```
 

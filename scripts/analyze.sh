@@ -114,24 +114,29 @@ Then analyze the screenshots and produce all output files."
 # --- Run analysis ---
 echo "=== Screen Capture Analysis — $(date) ==="
 
-# Today
-TODAY=$(date +%Y-%m-%d)
-if is_scheduled_day "$TODAY_DOW"; then
-    analyze_date "$TODAY"
-fi
+if [ -n "$1" ]; then
+    # Explicit date provided — analyze that date only, no catch-up
+    analyze_date "$1"
+else
+    # Default: today + catch-up
+    TODAY=$(date +%Y-%m-%d)
+    if is_scheduled_day "$TODAY_DOW"; then
+        analyze_date "$TODAY"
+    fi
 
-# Catch-up: yesterday
-YESTERDAY=$(date -v-1d +%Y-%m-%d)
-YESTERDAY_DOW=$(date -v-1d +%u)
-if is_scheduled_day "$YESTERDAY_DOW"; then
-    analyze_date "$YESTERDAY"
-fi
+    # Catch-up: yesterday
+    YESTERDAY=$(date -v-1d +%Y-%m-%d)
+    YESTERDAY_DOW=$(date -v-1d +%u)
+    if is_scheduled_day "$YESTERDAY_DOW"; then
+        analyze_date "$YESTERDAY"
+    fi
 
-# Catch-up: day before yesterday (handles weekends / multi-day laptop off)
-DAY_BEFORE=$(date -v-2d +%Y-%m-%d)
-DAY_BEFORE_DOW=$(date -v-2d +%u)
-if is_scheduled_day "$DAY_BEFORE_DOW"; then
-    analyze_date "$DAY_BEFORE"
+    # Catch-up: day before yesterday (handles weekends / multi-day laptop off)
+    DAY_BEFORE=$(date -v-2d +%Y-%m-%d)
+    DAY_BEFORE_DOW=$(date -v-2d +%u)
+    if is_scheduled_day "$DAY_BEFORE_DOW"; then
+        analyze_date "$DAY_BEFORE"
+    fi
 fi
 
 echo "=== Done ==="

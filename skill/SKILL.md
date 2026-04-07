@@ -109,14 +109,40 @@ If `meeting_source` is `none`, or Granola tools are not available in the current
 
 Raw screenshots are in `<raw_screenshots_dir>/*.jpg` (JPEG, ~30s intervals).
 
-### Phase A: Skeleton scan
-Read every 2nd screenshot chronologically to build the timeline. For each, extract:
+### Phase 0: Metadata scan
+
+The capture daemon saves a `.meta.json` sidecar alongside each screenshot (e.g., `09-03-15.jpg` has `09-03-15.meta.json`). These are tiny JSON files containing `app`, `window_title`, `url`, and `timestamp`.
+
+**Before reading any screenshots**, read ALL `.meta.json` files in the raw directory. This is cheap (small text files) and gives you a complete activity map for free.
+
+1. **Read all `.meta.json` files** in `<raw_screenshots_dir>/` using Glob (`*.meta.json`) then Read each file
+2. **Build an activity timeline** from metadata alone: for each entry, record timestamp, app, window_title, and url
+3. **Identify transitions** — mark every point where `app` OR `window_title` changed from the previous entry. These are the moments that matter.
+4. **Pre-categorize time blocks** — if the config defines `app_categories.productive` and/or `app_categories.neutral`, classify each time block:
+   - Apps listed in `app_categories.productive` → "productive"
+   - Apps listed in `app_categories.neutral` → "neutral"
+   - Apps not in any category → "uncategorized"
+5. **Output**: A complete activity map with timestamps, apps, window titles, URLs, transition markers, and category labels — all before reading a single screenshot
+
+**Key insight**: Metadata tells you WHAT app was active for free. Vision tells you WHAT was happening inside that app. Use metadata for categorization and timeline structure; use vision for context, content, and behavioral observations.
+
+### Phase A: Skeleton scan (metadata-aware)
+
+Use the metadata activity map from Phase 0 to read screenshots intelligently instead of reading every 2nd screenshot blindly.
+
+**Skip reading screenshots where metadata shows the same app + window_title as the previous screenshot.** No transition = no new visual information. This alone should reduce vision reads by 30-50%.
+
+**Prioritize reading screenshots at:**
+- **Transitions**: Every point where app or window_title changed in the metadata timeline
+- **Meeting apps**: All screenshots where metadata shows Zoom, Google Meet, Microsoft Teams, or similar — meeting content changes constantly regardless of app/title stability
+- **No metadata available**: Any screenshot without a corresponding `.meta.json` file (capture daemon may have missed it) — fall back to reading the screenshot directly
+- **Long same-app stretches**: For blocks where the same app + window_title persists for >5 minutes, sample one screenshot per 2-3 minutes to check for within-app context changes (e.g., switching tabs in a browser, different files in an editor)
+
+For each screenshot read, extract:
 - **Timestamp** (from filename: HH-MM-SS.jpg)
-- **App**: What application is in the foreground
+- **App**: What application is in the foreground (validate against metadata)
 - **Context**: What's on screen (meeting, doc, thread, spreadsheet, code, terminal, etc.)
 - **People visible**: Names in video call tiles, chat threads, doc editors
-
-This gives a ~50% sample rate — one screenshot per minute. Enough to catch every transition and activity block.
 
 ### Phase B: Targeted fill-in
 After the skeleton is built, fill remaining gaps:
@@ -125,10 +151,12 @@ After the skeleton is built, fill remaining gaps:
 - **Rapid-switch zones**: Read every screenshot in periods with 3+ transitions in 5 minutes
 
 ### Budget guidance
-- Full day (~960 screenshots): ~480 skeleton + ~50-100 targeted = ~530-580 reads
-- Half day (~480 screenshots): ~240 skeleton + ~30-50 targeted = ~270-290 reads
+- Metadata scan is essentially free — always do it first
+- With metadata-aware skipping, expect to read 30-50% fewer screenshots than the blind skeleton approach
+- Full day (~960 screenshots): ~250-350 skeleton (after metadata skip) + ~50-100 targeted = ~300-450 reads
+- Half day (~480 screenshots): ~130-170 skeleton + ~30-50 targeted = ~160-220 reads
 - Use parallel agents (3-4) to read screenshots concurrently — split the day into time blocks
-- Target: minimum 50% of all screenshots read. Below 30% is insufficient for accurate analysis.
+- Target: read every transition point and meeting screenshot. Below 30% of total screenshots is insufficient for accurate analysis.
 
 ---
 
@@ -175,14 +203,34 @@ HH:MM └─ [App/Context] ─────────────────�
 ```markdown
 ## Time Allocation
 
-| Category | Duration | % of Day | Blocks |
-|----------|----------|----------|--------|
-| ... | ... | ... | ... |
+| Category | Duration | % of Day | Blocks | Classification |
+|----------|----------|----------|--------|----------------|
+| ... | ... | ... | ... | productive/neutral/uncategorized |
 
 Total active time: Xh Ym
+Productive: Xh Ym (X%) | Neutral: Xh Ym (X%) | Uncategorized: Xh Ym (X%)
 ```
 
-**Dynamic categories**: Do NOT use predefined categories. Let categories emerge from what's on screen. Name them by app + primary context (e.g., "Zoom — team syncs", "Slack — async threads", "VS Code — feature development").
+**Dynamic categories**: Let categories emerge from what's on screen. Name them by app + primary context (e.g., "Zoom — team syncs", "Slack — async threads", "VS Code — feature development").
+
+**Classification using app_categories**: If the config defines `app_categories.productive` and `app_categories.neutral`, use them to classify each time block:
+- Apps in `app_categories.productive` → label "productive"
+- Apps in `app_categories.neutral` → label "neutral"
+- Apps not in any category → label "uncategorized" and flag for the user to classify
+
+If `app_categories` is not defined in config, skip classification and use dynamic categories only.
+
+When uncategorized apps are found, add a section at the bottom:
+
+```markdown
+### Uncategorized Apps
+
+The following apps were observed but are not listed in your `app_categories` config. Consider adding them:
+
+| App | Time Spent | Suggested Category |
+|-----|------------|--------------------|
+| ... | ... | productive / neutral |
+```
 
 ### Focus Analysis
 
@@ -464,6 +512,57 @@ Write a brief summary of new/updated processes to `<output_dir>/<date>/processes
 ```
 
 Don't force-fit. Only create a process file when you see a clear, repeatable pattern.
+
+---
+
+## Step 8: Generate Weekly Summary (if 5+ daily digests exist)
+
+At the end of each analysis run, check how many daily `digest.md` files exist in `<output_dir>/*/digest.md` with dates within the last 7 days. If 5 or more exist, generate (or update) a weekly summary file at `<output_dir>/weekly/YYYY-WNN.md` (ISO week number, e.g., `weekly/2026-W15.md`).
+
+Create the `weekly/` directory if it does not exist.
+
+### Weekly summary format
+
+```markdown
+# Weekly Summary — YYYY-WNN
+
+## Time Allocation Trends
+
+| Category | Mon | Tue | Wed | Thu | Fri | Avg |
+|----------|-----|-----|-----|-----|-----|-----|
+| ... | ... | ... | ... | ... | ... | ... |
+
+## Focus Trends
+- Deep work blocks: [trend across days]
+- Context switches/hour: [trend]
+- Meeting load: [trend]
+
+## Process Evolution
+- [Process X]: observed N times, average Xm, variant distribution
+- [Process Y]: new this week, observed N times
+
+## Top Automation Opportunities (cumulative)
+Rank the week's automation opportunities by total time cost:
+1. [Activity] — Xh/week potential, automation score Y/10
+2. ...
+
+## Coaching Themes
+What coaching feedback repeated across multiple days? These are the patterns worth addressing.
+- [Theme 1]: appeared X of 5 days
+- [Theme 2]: appeared X of 5 days
+
+## One-Line Week Verdict
+[Single sentence: how was this week overall relative to role and focus areas?]
+```
+
+### How to build the weekly summary
+
+1. Read each daily `digest.md` within the week to extract time allocation tables, focus metrics, and productivity signals
+2. Read each daily `feedback.md` to identify recurring coaching themes
+3. Read each daily `automations.md` to rank cumulative automation opportunities by total weekly time cost
+4. Read each daily `processes.md` and the `processes/` directory to summarize process evolution
+5. Synthesize trends across days — look for improving, declining, or flat patterns
+6. If a `weekly/YYYY-WNN.md` already exists for this week, overwrite it with the updated summary
 
 ---
 
