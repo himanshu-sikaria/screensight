@@ -19,6 +19,14 @@ capture:
   quality: 30
   width: 1280
   exclude_apps: []
+  exclude_windows: []              # Window title patterns to skip, e.g., ["*password*", "*banking*"]
+
+  # App classification for time-allocation scoring
+  # productive: core role work | neutral: supporting work | private: never captured
+  app_categories:
+    productive: ["Salesforce", "Vitally", "Zoom", "Google Docs", "Gong"]
+    neutral: ["Slack", "Gmail", "Google Chrome", "Arc", "Notion"]
+    private: []       # e.g., ["1Password", "Messages"] — treated same as exclude_apps
 
 analysis:
   schedule_hour: 23

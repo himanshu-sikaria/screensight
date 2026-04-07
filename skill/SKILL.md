@@ -202,25 +202,30 @@ Write to `<output_dir>/<date>/observations.md`.
 
 Open-format commentary. Write what you actually notice — not structured analysis, but the things a smart observer would point out after watching someone work all day.
 
-**What to include:**
+**Ordering principle: Lead with what's different about today, not what's the same.** Anomalies and deviations from established patterns come first. Routine confirmations come last (or get omitted if the list is already long enough).
+
+**What to include (in priority order):**
+- Anomalies and deviations: "No coding sessions today — first day this week without a building block." Things that broke pattern or were unexpected.
+- Process deviations: "Meeting prep was skipped before the customer call — normally you open notes 5 minutes before." Reference known processes from the processes/ directory.
+- New patterns: Things observed for the first time that might become patterns.
 - Micro-patterns: "You check Slack between every meeting, even when the gap is only 2 minutes"
 - Role observations: "You were the one typing in the live doc while 4 people watched — you're scribing, not facilitating"
-- Preparation patterns: "You opened notes 5 minutes before the call — pre-call prep is a recurring ritual"
 - People patterns: "Sarah appeared in 3 different contexts today — she's the most frequent collaborator"
 - Content observations: "The spreadsheet had formulas pre-filled — who built that template?"
-- Anomalies: "No coding sessions today — first day this week without a building block"
-- Connections across days: reference previous observations if patterns repeat
+- Connections across days: reference previous observations if patterns repeat or evolve
 
 **Format:**
 ```markdown
 # Observations — YYYY-MM-DD
 
-- [observation 1]
-- [observation 2]
+- [anomaly/deviation 1]
+- [anomaly/deviation 2]
+- [new pattern 1]
+- [routine observation 1]
 ...
 ```
 
-No headers, no structure. Flat list ordered by importance. Aim for 10-20 observations. Quality over quantity.
+No headers, no structure. Flat list ordered by priority (anomalies first, routine last). Aim for 10-20 observations. Quality over quantity.
 
 ---
 
@@ -232,6 +237,16 @@ Direct, evidence-based feedback. Structured around the user's **coaching** prior
 
 ```markdown
 # Feedback — YYYY-MM-DD
+
+## Process Breakdowns
+
+Where did your established processes deviate or break today? For each known process (from processes/ directory), flag:
+- **Process name**: Did it run as expected or deviate?
+- **Deviation type**: Productive (intentional improvement) or Problematic (lost time)?
+- **What caused it**: External trigger, missing input, tool failure, time pressure, etc.
+- **Impact**: How much time was gained or lost vs. happy path?
+
+If no established processes exist yet, skip this section.
 
 ## Time Verdict
 
@@ -281,12 +296,22 @@ Look for repeated manual patterns — things the user does regularly that could 
 - **Frequency**: How often this was observed today (and across prior days if applicable)
 - **Pattern**: Step-by-step what the user does manually
 - **Time cost**: Estimated minutes per instance and per week
-- **Automation path**: Specific suggestion — tool, script, integration, or delegation
+- **Automation type**: [RPA | API Integration | AI/LLM | Script | Template | Delegation]
+- **Specific tool**: [e.g., "Zapier webhook", "shell script + cron", "Claude Code skill", "Keyboard Maestro macro", "n8n workflow", "browser extension"]
+- **Automation score**: X/10 (based on: frequency x time_saved x ease_of_automation)
+- **ROI estimate**: Xh saved/week, Y weeks to build
 - **Effort to automate**: Low / Medium / High
 
 ### [Next opportunity]
 ...
 ```
+
+**Automation score guidance:**
+- **9-10**: Daily activity, >15 min/instance, straightforward to automate (e.g., copy-paste between two apps with APIs)
+- **7-8**: Daily or frequent, 5-15 min/instance, clear automation path with moderate setup
+- **5-6**: Weekly activity or moderate time cost, requires some custom logic
+- **3-4**: Infrequent but painful, or complex to automate reliably
+- **1-2**: Rare occurrence or requires heavy human judgment, automation ROI is marginal
 
 **What to look for:**
 - Copy-paste between apps (CRM → Slack, spreadsheet → doc)
@@ -322,17 +347,29 @@ Write to `<output_dir>/processes/<process-name>.md`:
 
 ## Current Model
 
-### Steps Observed
+### Happy Path (most common)
 1. [Step] — [Xm] — [app/context]
 2. [Step] — [Xm] — [app/context]
 3. ...
 
+### Variants
+#### Variant A: [Name] (observed X times)
+- Differs at step N: [what's different]
+- Impact: +Xm / -Xm vs happy path
+
+#### Variant B: [Name] (observed X times)
+- Differs at step N: [what's different]
+- Impact: +Xm / -Xm vs happy path
+
+When logging variants, cluster similar deviations under one variant rather than treating each occurrence as unique. Two instances that differ at the same step for the same reason = one variant with count 2.
+
+### Performance Range
+- Fastest: Xm on YYYY-MM-DD — [what made it fast]
+- Slowest: Xm on YYYY-MM-DD — [what made it slow]
+- Average: Xm across N observations
+
 ### People Involved
 - [Name] — [role in this process]
-
-### Time Per Instance
-- Observed: Xm
-- Estimated automatable portion: Xm (X%)
 
 ### Automation Potential
 - [What could be automated and how]
@@ -341,15 +378,17 @@ Write to `<output_dir>/processes/<process-name>.md`:
 ## Observation Log
 ### YYYY-MM-DD
 - [What was observed, with timestamps from the daily timeline]
+- [Variant observed: Happy Path / Variant X]
+- [Duration this instance: Xm]
 ```
 
 ### Evolving an existing process file
 
 When you see a process that matches an existing file in `<output_dir>/processes/`:
-- Add a new entry under `## Observation Log` with today's date and timestamps
-- Update `## Current Model` if the steps changed or you learned new details
-- Update time estimates with new data points
-- Note variations from the established model
+- Add a new entry under `## Observation Log` with today's date, timestamps, variant observed, and duration
+- Update `## Current Model`: if today's execution matches the happy path, confirm it. If it deviates, either increment an existing variant's count or create a new variant.
+- Update `### Performance Range` with new fastest/slowest/average data
+- Cluster similar deviations: if two variants differ at the same step for similar reasons, merge them into one variant with a higher count
 
 ### Also write a summary to today's output
 

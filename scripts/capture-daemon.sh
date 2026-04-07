@@ -50,6 +50,48 @@ parse_yaml_list() {
     echo "$result" | xargs
 }
 
+parse_yaml_nested_list() {
+    # Parse a list nested under a parent key, e.g., app_categories.private
+    local parent="$1"
+    local child="$2"
+    local in_parent=false
+    local in_child=false
+    local result=""
+    while IFS= read -r line; do
+        if echo "$line" | grep -q "^  ${parent}:"; then
+            in_parent=true
+            continue
+        fi
+        if $in_parent; then
+            if echo "$line" | grep -q "^    ${child}:"; then
+                # Check for inline list: child: [a, b, c]
+                local inline
+                inline=$(echo "$line" | sed "s/.*${child}: *//" | tr -d '[]"' | tr ',' '\n' | xargs)
+                if [ -n "$inline" ] && [ "$inline" != "" ]; then
+                    echo "$inline"
+                    return
+                fi
+                in_child=true
+                continue
+            fi
+            if $in_child; then
+                if echo "$line" | grep -q "^      - "; then
+                    local item
+                    item=$(echo "$line" | sed 's/^      - //' | tr -d '"')
+                    result="$result $item"
+                elif echo "$line" | grep -qv "^$"; then
+                    break
+                fi
+            fi
+            # If we hit a new top-level or capture-level key, stop
+            if echo "$line" | grep -q "^  [a-z]" && ! echo "$line" | grep -q "^    "; then
+                break
+            fi
+        fi
+    done < "$CONFIG_FILE"
+    echo "$result" | xargs
+}
+
 # --- Load config ---
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "Config not found: $CONFIG_FILE"
@@ -70,6 +112,14 @@ OUTPUT_DIR="${OUTPUT_DIR/#\~/$HOME}"
 CAPTURE_DIR="$OUTPUT_DIR/raw"
 
 EXCLUDE_APPS=$(parse_yaml_list "exclude_apps")
+EXCLUDE_WINDOWS=$(parse_yaml_list "exclude_windows")
+PRIVATE_APPS=$(parse_yaml_nested_list "app_categories" "private")
+
+# Merge private apps into exclude list
+if [ -n "$PRIVATE_APPS" ]; then
+    EXCLUDE_APPS="$EXCLUDE_APPS $PRIVATE_APPS"
+    EXCLUDE_APPS=$(echo "$EXCLUDE_APPS" | xargs)
+fi
 
 PIDFILE="/tmp/screen-capture.pid"
 
@@ -87,6 +137,9 @@ echo "  Captures: $CAPTURE_DIR/YYYY-MM-DD/"
 echo "  Retention: ${RETENTION_DAYS} days"
 if [ -n "$EXCLUDE_APPS" ]; then
     echo "  Excluded apps: $EXCLUDE_APPS"
+fi
+if [ -n "$EXCLUDE_WINDOWS" ]; then
+    echo "  Excluded window patterns: $EXCLUDE_WINDOWS"
 fi
 
 LAST_CLEANUP_DAY=""
@@ -122,9 +175,11 @@ while true; do
         continue
     fi
 
+    # --- Get frontmost app (reused for exclusion check + metadata) ---
+    FRONTMOST=$(osascript -e 'tell application "System Events" to get name of first application process whose frontmost is true' 2>/dev/null || echo "")
+
     # --- Guard: excluded app in foreground ---
     if [ -n "$EXCLUDE_APPS" ]; then
-        FRONTMOST=$(osascript -e 'tell application "System Events" to get name of first application process whose frontmost is true' 2>/dev/null || echo "")
         SKIP=false
         for APP in $EXCLUDE_APPS; do
             if [ "$FRONTMOST" = "$APP" ]; then
@@ -154,6 +209,46 @@ while true; do
         FSIZE=$(stat -f%z "$DIR/${TS}.jpg" 2>/dev/null || echo "0")
         if [ "$FSIZE" -lt "$MIN_FILE_SIZE" ]; then
             rm -f "$DIR/${TS}.jpg"
+        else
+            # --- Write metadata sidecar ---
+            META_TITLE=$(osascript -e 'tell application "System Events" to get title of front window of (first application process whose frontmost is true)' 2>/dev/null || echo "")
+
+            # --- Guard: excluded window title pattern (case-insensitive glob) ---
+            if [ -n "$EXCLUDE_WINDOWS" ] && [ -n "$META_TITLE" ]; then
+                TITLE_LOWER=$(echo "$META_TITLE" | tr '[:upper:]' '[:lower:]')
+                WINDOW_SKIP=false
+                for PATTERN in $EXCLUDE_WINDOWS; do
+                    PAT_LOWER=$(echo "$PATTERN" | tr '[:upper:]' '[:lower:]')
+                    # Use bash case for glob matching
+                    case "$TITLE_LOWER" in
+                        $PAT_LOWER)
+                            WINDOW_SKIP=true
+                            break
+                            ;;
+                    esac
+                done
+                if $WINDOW_SKIP; then
+                    rm -f "$DIR/${TS}.jpg"
+                    sleep "$INTERVAL"
+                    continue
+                fi
+            fi
+
+            META_URL=""
+            case "$FRONTMOST" in
+                Safari) META_URL=$(osascript -e 'tell application "Safari" to get URL of front document' 2>/dev/null || echo "") ;;
+                "Google Chrome") META_URL=$(osascript -e 'tell application "Google Chrome" to get URL of active tab of front window' 2>/dev/null || echo "") ;;
+                Arc) META_URL=$(osascript -e 'tell application "Arc" to get URL of active tab of front window' 2>/dev/null || echo "") ;;
+                Firefox) META_URL=$(osascript -e 'tell application "Firefox" to get URL of front document' 2>/dev/null || echo "") ;;
+                "Microsoft Edge") META_URL=$(osascript -e 'tell application "Microsoft Edge" to get URL of active tab of front window' 2>/dev/null || echo "") ;;
+            esac
+            META_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            # Escape backslashes and double quotes for valid JSON
+            META_TITLE=$(printf '%s' "$META_TITLE" | sed 's/\\/\\\\/g; s/"/\\"/g')
+            META_URL=$(printf '%s' "$META_URL" | sed 's/\\/\\\\/g; s/"/\\"/g')
+            FRONTMOST_ESC=$(printf '%s' "$FRONTMOST" | sed 's/\\/\\\\/g; s/"/\\"/g')
+            printf '{"app":"%s","window_title":"%s","url":"%s","timestamp":"%s"}\n' \
+                "$FRONTMOST_ESC" "$META_TITLE" "$META_URL" "$META_TS" > "$DIR/${TS}.meta.json"
         fi
     else
         rm -f "$DIR/${TS}.png"

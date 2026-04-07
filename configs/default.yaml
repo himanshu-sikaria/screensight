@@ -17,6 +17,14 @@ capture:
   quality: 30                     # JPEG quality (1-100, lower = smaller files)
   width: 1280                     # Resize width in pixels
   exclude_apps: []                # Apps to never capture, e.g., ["1Password", "Messages"]
+  exclude_windows: []              # Window title patterns to skip, e.g., ["*password*", "*banking*"]
+
+  # App classification for time-allocation scoring
+  # productive: core role work | neutral: supporting work | private: never captured
+  app_categories:
+    productive: []    # e.g., ["VS Code", "Figma", "Salesforce"]
+    neutral: []       # e.g., ["Slack", "Gmail", "Calendar"]
+    private: []       # e.g., ["1Password", "Messages"] — treated same as exclude_apps
 
 # Analysis settings
 analysis:
