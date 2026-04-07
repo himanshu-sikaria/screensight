@@ -1,0 +1,30 @@
+# Screen Capture — Customer Success Template
+
+role: "Customer Success Manager"
+company: ""
+focus_areas:
+  - customer engagement and health monitoring
+  - renewal and expansion preparation
+  - cross-functional escalation management
+
+coaching:
+  - proactive vs reactive time allocation
+  - customer-facing time ratio
+  - internal process efficiency
+
+capture:
+  interval_seconds: 30
+  idle_timeout_minutes: 30
+  retention_days: 7
+  quality: 30
+  width: 1280
+  exclude_apps: []
+
+analysis:
+  schedule_hour: 23
+  schedule_days: "1,2,3,4,5"
+  model: opus
+  meeting_source: none
+
+output:
+  directory: ~/screen-capture

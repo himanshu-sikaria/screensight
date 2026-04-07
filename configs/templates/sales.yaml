@@ -1,0 +1,30 @@
+# Screen Capture — Sales Template
+
+role: "Account Executive"
+company: ""
+focus_areas:
+  - pipeline progression and deal management
+  - prospecting and outreach effectiveness
+  - demo and presentation preparation
+
+coaching:
+  - selling time vs admin time ratio
+  - deal preparation quality
+  - follow-up discipline
+
+capture:
+  interval_seconds: 30
+  idle_timeout_minutes: 30
+  retention_days: 7
+  quality: 30
+  width: 1280
+  exclude_apps: []
+
+analysis:
+  schedule_hour: 23
+  schedule_days: "1,2,3,4,5"
+  model: opus
+  meeting_source: none
+
+output:
+  directory: ~/screen-capture

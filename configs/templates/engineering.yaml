@@ -1,0 +1,30 @@
+# Screen Capture — Engineering Template
+
+role: "Software Engineer"
+company: ""
+focus_areas:
+  - deep work and coding output
+  - code review throughput
+  - architecture decisions
+
+coaching:
+  - deep work protection
+  - meeting load management
+  - context switching reduction
+
+capture:
+  interval_seconds: 30
+  idle_timeout_minutes: 30
+  retention_days: 7
+  quality: 30
+  width: 1280
+  exclude_apps: []
+
+analysis:
+  schedule_hour: 23
+  schedule_days: "1,2,3,4,5"
+  model: opus
+  meeting_source: none
+
+output:
+  directory: ~/screen-capture

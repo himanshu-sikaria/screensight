@@ -1,0 +1,30 @@
+# Screen Capture — Product Template
+
+role: "Product Manager"
+company: ""
+focus_areas:
+  - customer discovery and feedback synthesis
+  - roadmap prioritization
+  - cross-functional alignment
+
+coaching:
+  - deep thinking time vs meeting load
+  - stakeholder communication effectiveness
+  - decision closure rate
+
+capture:
+  interval_seconds: 30
+  idle_timeout_minutes: 30
+  retention_days: 7
+  quality: 30
+  width: 1280
+  exclude_apps: []
+
+analysis:
+  schedule_hour: 23
+  schedule_days: "1,2,3,4,5"
+  model: opus
+  meeting_source: none
+
+output:
+  directory: ~/screen-capture

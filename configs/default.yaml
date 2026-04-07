@@ -1,0 +1,30 @@
+# Screen Capture — Configuration
+# Copy to ~/.screen-capture/config.yaml and customize
+
+# Role & context (shapes analysis tone and focus)
+role: ""                          # e.g., "Engineering Manager", "Product Manager"
+company: ""                       # e.g., "Acme Corp"
+focus_areas: []                   # e.g., ["code review throughput", "team coaching"]
+
+# Coaching priorities (what feedback should emphasize)
+coaching: []                      # e.g., ["deep work protection", "meeting effectiveness"]
+
+# Capture settings
+capture:
+  interval_seconds: 30            # Screenshot frequency
+  idle_timeout_minutes: 30        # Skip capture when idle this long
+  retention_days: 7               # Auto-delete raw screenshots after N days
+  quality: 30                     # JPEG quality (1-100, lower = smaller files)
+  width: 1280                     # Resize width in pixels
+  exclude_apps: []                # Apps to never capture, e.g., ["1Password", "Messages"]
+
+# Analysis settings
+analysis:
+  schedule_hour: 23               # Hour to run analysis (24h format)
+  schedule_days: "1,2,3,4,5"     # Days of week (1=Mon, 7=Sun)
+  model: opus                     # Claude model: opus | sonnet
+  meeting_source: none            # none | granola
+
+# Output
+output:
+  directory: ~/screen-capture     # Where analysis markdown files go
