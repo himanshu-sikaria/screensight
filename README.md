@@ -117,6 +117,25 @@ All output is in `~/screen-capture/`:
 
 **processes/** — Detected business processes that evolve over time. Each file tracks steps, people, time per instance, and automation potential.
 
+## Granola Meeting Integration
+
+If you use [Granola](https://granola.ai) for meeting notes and have the Granola MCP integration enabled in Claude Code, screen-capture can merge meeting transcripts with screen data for richer analysis.
+
+**To enable:**
+
+1. Make sure Granola MCP is connected in your Claude Code settings (Settings > MCP Servers > Granola)
+2. Set `meeting_source: granola` in `~/.screen-capture/config.yaml`
+
+**What it adds:**
+
+- Meeting blocks in digest.md get enriched with topics, decisions, action items, and engagement level
+- Feedback includes a meeting effectiveness table (decisions made, follow-up visible, engagement)
+- Observations flag screen-vs-speech divergence (e.g., multitasking during presentations)
+- Process detection picks up pre-meeting prep and post-meeting follow-up patterns
+- Decision closure tracking: did decisions from meetings get documented in tools afterward?
+
+**Without Granola:** Everything works — analysis is based on screenshots only. Meeting blocks still appear in the timeline (Zoom/Meet visible on screen) but without transcript context.
+
 ## Cost
 
 The AI analysis uses Claude's vision API to read screenshots:

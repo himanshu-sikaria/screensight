@@ -89,9 +89,17 @@ Process files directory: $OUTPUT_DIR/processes/
 Read the config file first to understand the user's role, focus areas, and coaching priorities.
 Then analyze the screenshots and produce all output files."
 
+    # Build allowed tools list
+    local TOOLS="Read,Write,Edit,Glob,Grep,Bash"
+    local MEETING_SOURCE
+    MEETING_SOURCE=$(parse_yaml_value "meeting_source" "none")
+    if [ "$MEETING_SOURCE" = "granola" ]; then
+        TOOLS="$TOOLS,mcp__claude_ai_Granola__list_meetings,mcp__claude_ai_Granola__get_meetings,mcp__claude_ai_Granola__get_meeting_transcript,mcp__claude_ai_Granola__query_granola_meetings"
+    fi
+
     # Run Claude Code with the analysis skill
     claude --model "$MODEL" \
-        --allowedTools "Read,Write,Edit,Glob,Grep,Bash" \
+        --allowedTools "$TOOLS" \
         -p "$PROMPT" \
         >> "$LOG_FILE" 2>&1
 

@@ -1,7 +1,7 @@
 ---
 name: screen-analysis
 description: "Analyzes daily screen captures to produce process maps, observations, coaching feedback, automation opportunities, and business process detection. Config-driven — adapts to any role."
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, mcp__claude_ai_Granola__list_meetings, mcp__claude_ai_Granola__get_meetings, mcp__claude_ai_Granola__get_meeting_transcript, mcp__claude_ai_Granola__query_granola_meetings
 ---
 
 # Screen Activity Analysis
@@ -30,19 +30,78 @@ If role is empty, provide generic analysis. If focus_areas or coaching are empty
 
 ## Step 1: Pull Meetings (if configured)
 
-**Only if `meeting_source: granola` in config:**
+**Only if `meeting_source: granola` in config.**
+
+Granola is a meeting notes app that records and transcribes meetings. If the user has the Granola MCP integration enabled in Claude Code, you can pull full meeting transcripts to enrich the screen analysis.
+
+### How to pull Granola data
 
 1. Use `mcp__claude_ai_Granola__list_meetings` to find all meetings for the analysis date
-2. For each meeting, use `mcp__claude_ai_Granola__get_meeting_transcript` to get the full transcript
-3. Build a meeting index: title, start/end time, participants, key topics, decisions, action items
+2. For each meeting found, use `mcp__claude_ai_Granola__get_meeting_transcript` to get the full transcript
+3. Build a **meeting index**:
 
-This gives the **conversation layer** — what was said in meetings. Screenshots give the **visual layer** — what was on screen. The analysis merges both:
+```markdown
+### Meeting: [Title]
+- **Time**: HH:MM — HH:MM
+- **Participants**: [names]
+- **Key topics**: [bullet list]
+- **Decisions made**: [bullet list]
+- **Action items**: [bullet list with owners]
+```
 
-- Meeting blocks in the process map get enriched with topics, decisions, and action items
-- Observations can reference what was said vs. what was on screen
-- Process detection benefits from knowing what was discussed during prep and follow-up
+### How to merge meetings with screenshots
 
-**If meeting_source is `none` or Granola is unavailable**: Proceed with screenshots only.
+This gives the **conversation layer** (what was said) alongside the **visual layer** (what was on screen). Merge them:
+
+- **Process map enrichment**: Meeting blocks in digest.md get enriched with topics discussed, decisions made, and action items assigned. Instead of just "Zoom — 30m meeting", it becomes "Zoom: Sprint Planning — discussed auth refactor, decided to delay by 1 week, assigned API migration to Sarah".
+- **Screen vs. speech divergence**: Flag when what's on screen doesn't match what's being discussed. E.g., "You were discussing the roadmap but your screen showed Slack for 8 of the 30 minutes" — this is high-value for the observations and feedback files.
+- **Pre/post meeting patterns**: Match what was on screen in the 5 minutes before and after each meeting to detect preparation and follow-up habits. E.g., "You opened the project board 3 min before standup — consistent prep pattern" or "No follow-up actions visible after the customer call despite 3 action items assigned."
+- **Decision closure tracking**: Cross-reference decisions from Granola transcripts with what's visible in docs/tools after the meeting. Did the decision get documented? Was the action item created?
+- **Meeting effectiveness signal**: For each meeting, rate based on combined evidence:
+  - Did the meeting have clear outcomes (from transcript)?
+  - Was the user actively engaged (from screenshots — presenting, typing, or passive/multitasking)?
+  - Was follow-up visible after the meeting?
+
+### Granola-enriched output sections
+
+When Granola data is available, enhance these output files:
+
+**digest.md** — Meeting blocks include topic summaries, decision counts, and engagement level:
+```
+10:00 ├─ Zoom: Sprint Planning ────────────── [30m meeting]
+      │  Topics: auth refactor, API migration timeline
+      │  Decisions: 2 closed, 1 deferred
+      │  Action items: 3 assigned
+      │  Engagement: Active (presenting 60%, screen-share 25%, passive 15%)
+```
+
+**observations.md** — Add meeting-specific observations:
+- "You multitasked during the all-hands — Slack was visible for 12 of 45 minutes while the CEO was presenting"
+- "The 1:1 with Sarah had zero follow-up actions visible on screen despite 2 action items in the transcript"
+- "You prepared for the customer call (opened CRM + notes 5 min before) but not for the internal sync (joined cold)"
+
+**feedback.md** — Add a meeting effectiveness section:
+```markdown
+## Meeting Effectiveness
+
+| Meeting | Duration | Decisions | Follow-up Visible | Engagement |
+|---------|----------|-----------|-------------------|------------|
+| Sprint Planning | 30m | 2 | Yes (Jira updated) | Active |
+| All-Hands | 45m | 0 | No | Passive (multitasking) |
+| Customer Call | 25m | 1 | No | Active |
+
+Meetings where you were passive: X of Y (Z%). Consider declining or sending a delegate.
+Meetings with no visible follow-up: X of Y — decisions without follow-through decay.
+```
+
+**processes.md** — Detect meeting-related process patterns:
+- Pre-meeting prep rituals (what apps opened, how long before)
+- Post-meeting follow-up patterns (or lack thereof)
+- Recurring meeting structures (standup → same Jira board every time)
+
+### If Granola is unavailable
+
+If `meeting_source` is `none`, or Granola tools are not available in the current Claude Code session, proceed with screenshots only. Note in the digest: "Meeting transcripts not available — analysis based on screen evidence only."
 
 ---
 
