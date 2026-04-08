@@ -13,10 +13,10 @@ parse_yaml_value() {
     local default="$2"
     local val
     # Try indented key first (nested under a section)
-    val=$(grep "^  ${key}:" "$CONFIG_FILE" 2>/dev/null | head -1 | sed 's/.*: *//' | tr -d '"' || echo "")
+    val=$(grep "^  ${key}:" "$CONFIG_FILE" 2>/dev/null | head -1 | sed 's/ *#.*//' | sed 's/.*: *//' | tr -d '"' || echo "")
     if [ -z "$val" ]; then
         # Try top-level key
-        val=$(grep "^${key}:" "$CONFIG_FILE" 2>/dev/null | head -1 | sed 's/.*: *//' | tr -d '"' || echo "")
+        val=$(grep "^${key}:" "$CONFIG_FILE" 2>/dev/null | head -1 | sed 's/ *#.*//' | sed 's/.*: *//' | tr -d '"' || echo "")
     fi
     echo "${val:-$default}"
 }
@@ -29,7 +29,7 @@ parse_yaml_list() {
         if echo "$line" | grep -q "^  ${key}:"; then
             # Check for inline list: key: [a, b, c]
             local inline
-            inline=$(echo "$line" | sed "s/.*${key}: *//" | tr -d '[]"' | tr ',' '\n' | xargs)
+            inline=$(echo "$line" | sed 's/ *#.*//' | sed "s/.*${key}: *//" | tr -d '[]"' | tr ',' '\n' | xargs)
             if [ -n "$inline" ] && [ "$inline" != "" ]; then
                 echo "$inline"
                 return
@@ -66,7 +66,7 @@ parse_yaml_nested_list() {
             if echo "$line" | grep -q "^    ${child}:"; then
                 # Check for inline list: child: [a, b, c]
                 local inline
-                inline=$(echo "$line" | sed "s/.*${child}: *//" | tr -d '[]"' | tr ',' '\n' | xargs)
+                inline=$(echo "$line" | sed 's/ *#.*//' | sed "s/.*${child}: *//" | tr -d '[]"' | tr ',' '\n' | xargs)
                 if [ -n "$inline" ] && [ "$inline" != "" ]; then
                     echo "$inline"
                     return
@@ -119,6 +119,16 @@ PRIVATE_APPS=$(parse_yaml_nested_list "app_categories" "private")
 if [ -n "$PRIVATE_APPS" ]; then
     EXCLUDE_APPS="$EXCLUDE_APPS $PRIVATE_APPS"
     EXCLUDE_APPS=$(echo "$EXCLUDE_APPS" | xargs)
+fi
+
+LOG_DIR="$OUTPUT_DIR/logs"
+mkdir -p "$LOG_DIR"
+
+# Detect capture method: prefer CoreGraphics (works under launchd) over screencapture
+CAPTURE_METHOD="screencapture"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if python3 -c "import Quartz" 2>/dev/null; then
+    CAPTURE_METHOD="coregraphics"
 fi
 
 PIDFILE="/tmp/screen-capture.pid"
@@ -205,7 +215,11 @@ while true; do
     mkdir -p "$DIR"
     TS=$(date +%H-%M-%S)
 
-    /usr/sbin/screencapture -x "$DIR/${TS}.png" 2>/dev/null
+    if [ "$CAPTURE_METHOD" = "coregraphics" ]; then
+        python3 "$SCRIPT_DIR/capture-screen.py" "$DIR/${TS}.png" 2>/dev/null
+    else
+        /usr/sbin/screencapture -x "$DIR/${TS}.png" 2>/dev/null
+    fi
 
     if [ -s "$DIR/${TS}.png" ]; then
         /usr/bin/sips -Z "$WIDTH" "$DIR/${TS}.png" --out "$DIR/${TS}.png" >/dev/null 2>&1

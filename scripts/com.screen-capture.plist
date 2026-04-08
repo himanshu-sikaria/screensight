@@ -6,8 +6,11 @@
     <string>com.screen-capture.daemon</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/bin/bash</string>
-        <string>INSTALL_PATH/scripts/capture-daemon.sh</string>
+        <string>APP_BUNDLE_PATH/Contents/MacOS/run</string>
+    </array>
+    <key>AssociatedBundleIdentifiers</key>
+    <array>
+        <string>com.screen-capture.daemon</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
