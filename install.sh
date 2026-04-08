@@ -109,6 +109,22 @@ launchctl load "$LAUNCH_AGENTS_DIR/com.screen-capture.analyze.plist"
 
 echo "LaunchAgents installed and loaded."
 
+# --- Menu bar app (optional, requires rumps) ---
+if python3 -c "import rumps" 2>/dev/null; then
+    sed -e "s|INSTALL_PATH|$SCRIPT_DIR|g" \
+        -e "s|LOG_PATH|$OUTPUT_DIR/logs|g" \
+        "$SCRIPT_DIR/scripts/com.screen-capture.menubar.plist" \
+        > "$LAUNCH_AGENTS_DIR/com.screen-capture.menubar.plist"
+    launchctl unload "$LAUNCH_AGENTS_DIR/com.screen-capture.menubar.plist" 2>/dev/null || true
+    launchctl load "$LAUNCH_AGENTS_DIR/com.screen-capture.menubar.plist"
+    echo "Menu bar app installed (shows capture status, pause/resume)."
+else
+    echo ""
+    echo "Optional: Install the menu bar app for status indicator + pause/resume:"
+    echo "  pip3 install rumps --break-system-packages"
+    echo "  Then re-run ./install.sh"
+fi
+
 # --- Screen Recording permission ---
 echo ""
 echo "=== IMPORTANT: Grant Screen Recording Permission ==="

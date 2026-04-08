@@ -158,15 +158,52 @@ Set `analysis.model` in config to control cost.
 - Raw screenshots auto-delete after `retention_days` (default: 7).
 - No telemetry, no analytics, no data collection.
 
+## Menu Bar App
+
+A lightweight menu bar indicator shows capture status and lets you pause/resume.
+
+```
+● Capture: Active          ❚❚ Capture: Paused
+  Today: 142 screenshots      Today: 142 screenshots
+  Last analysis: 2026-04-06   Last analysis: 2026-04-06
+  ─────────────────────        ─────────────────────
+  Pause Capture                Resume Capture
+  ─────────────────────        ─────────────────────
+  Open Output Folder           Open Output Folder
+  Edit Config                  Edit Config
+  Run Analysis Now             Run Analysis Now
+  ─────────────────────        ─────────────────────
+  Quit                         Quit
+```
+
+**Requires** `rumps` (Python menu bar library):
+
+```bash
+pip3 install rumps --break-system-packages
+```
+
+The installer auto-detects `rumps` and installs the menu bar app if available. To add it later, install rumps and re-run `./install.sh`.
+
+You can also pause/resume from the command line:
+
+```bash
+touch /tmp/screen-capture.paused    # pause
+rm /tmp/screen-capture.paused       # resume
+```
+
 ## Manual Analysis
 
-To run analysis manually (without waiting for the scheduled time):
+To run analysis for today (+ catch up on missed days):
 
 ```bash
 ./scripts/analyze.sh
 ```
 
-This analyzes today + catches up on any missed days.
+To analyze a specific date:
+
+```bash
+./scripts/analyze.sh 2026-04-05
+```
 
 ## Uninstall
 

@@ -12,7 +12,7 @@ echo "=== Screen Capture — Uninstaller ==="
 echo ""
 
 # --- Stop and remove LaunchAgents ---
-for PLIST in "com.screen-capture.daemon" "com.screen-capture.analyze"; do
+for PLIST in "com.screen-capture.daemon" "com.screen-capture.analyze" "com.screen-capture.menubar"; do
     PLIST_FILE="$LAUNCH_AGENTS_DIR/${PLIST}.plist"
     if [ -f "$PLIST_FILE" ]; then
         launchctl unload "$PLIST_FILE" 2>/dev/null || true

@@ -122,6 +122,7 @@ if [ -n "$PRIVATE_APPS" ]; then
 fi
 
 PIDFILE="/tmp/screen-capture.pid"
+PAUSEFILE="/tmp/screen-capture.paused"
 
 # --- Prevent duplicate instances ---
 if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
@@ -145,6 +146,12 @@ fi
 LAST_CLEANUP_DAY=""
 
 while true; do
+    # --- Guard: paused ---
+    if [ -f "$PAUSEFILE" ]; then
+        sleep "$INTERVAL"
+        continue
+    fi
+
     # --- Cleanup once per new day ---
     TODAY=$(date +%Y-%m-%d)
     if [ "$TODAY" != "$LAST_CLEANUP_DAY" ]; then
