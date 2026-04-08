@@ -31,6 +31,20 @@ if ! command -v screencapture &>/dev/null; then
     exit 1
 fi
 
+# --- Install Python capture dependency (for launchd compatibility) ---
+if python3 -c "import Quartz" 2>/dev/null; then
+    echo "CoreGraphics capture: ready (pyobjc-framework-Quartz installed)"
+else
+    echo "Installing pyobjc-framework-Quartz for launchd-compatible screen capture..."
+    if pip3 install pyobjc-framework-Quartz --break-system-packages 2>/dev/null; then
+        echo "CoreGraphics capture: installed"
+    else
+        echo "Warning: Could not install pyobjc-framework-Quartz."
+        echo "  Capture will use /usr/sbin/screencapture (may fail under launchd on macOS 15+)."
+        echo "  To fix: pip3 install pyobjc-framework-Quartz"
+    fi
+fi
+
 # --- Choose template ---
 echo "Choose your role (pre-fills config with relevant defaults):"
 echo ""
@@ -83,12 +97,52 @@ echo "Output directory: $OUTPUT_DIR/"
 # --- Make scripts executable ---
 chmod +x "$SCRIPT_DIR/scripts/capture-daemon.sh"
 chmod +x "$SCRIPT_DIR/scripts/analyze.sh"
+chmod +x "$SCRIPT_DIR/scripts/capture-screen.py"
+
+# --- Create app bundle for Screen Recording TCC ---
+# macOS grants Screen Recording permission to app bundles, not raw binaries.
+# launchd runs /bin/bash directly, which has no app bundle, so screencapture
+# fails with "could not create image from display." This wrapper app gives
+# macOS a named entity to grant permission to.
+APP_DIR="$HOME/Applications/ScreenCaptureDaemon.app"
+echo "Creating app bundle: $APP_DIR"
+mkdir -p "$APP_DIR/Contents/MacOS"
+cat > "$APP_DIR/Contents/Info.plist" << 'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>run</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.screen-capture.daemon</string>
+    <key>CFBundleName</key>
+    <string>ScreenCaptureDaemon</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>LSBackgroundOnly</key>
+    <true/>
+    <key>LSUIElement</key>
+    <true/>
+</dict>
+</plist>
+PLIST
+
+cat > "$APP_DIR/Contents/MacOS/run" << WRAPPER
+#!/bin/bash
+exec "$SCRIPT_DIR/scripts/capture-daemon.sh"
+WRAPPER
+chmod +x "$APP_DIR/Contents/MacOS/run"
+
+# Ad-hoc sign so macOS recognizes it for TCC
+codesign -s - -f "$APP_DIR" 2>/dev/null || true
 
 # --- Install LaunchAgents ---
 mkdir -p "$LAUNCH_AGENTS_DIR"
 
 # Capture daemon plist — replace placeholders
 sed -e "s|INSTALL_PATH|$SCRIPT_DIR|g" \
+    -e "s|APP_BUNDLE_PATH|$APP_DIR|g" \
     -e "s|LOG_PATH|$OUTPUT_DIR/logs|g" \
     "$SCRIPT_DIR/scripts/com.screen-capture.plist" \
     > "$LAUNCH_AGENTS_DIR/com.screen-capture.daemon.plist"
@@ -130,11 +184,15 @@ echo ""
 echo "=== IMPORTANT: Grant Screen Recording Permission ==="
 echo ""
 echo "macOS requires you to manually grant Screen Recording access."
-echo "Opening System Preferences now..."
+echo "Opening System Settings now..."
 echo ""
-echo "  1. Find 'Terminal' (or 'iTerm') in the list"
-echo "  2. Toggle it ON"
-echo "  3. You may need to restart Terminal after granting"
+echo "  1. Click the '+' button"
+echo "  2. Navigate to ~/Applications and select 'ScreenCaptureDaemon.app'"
+echo "  3. Toggle it ON"
+echo ""
+echo "  Note: On macOS 15+, granting permission to Terminal/iTerm alone is"
+echo "  not sufficient. The launchd daemon runs outside any terminal app, so"
+echo "  it needs its own Screen Recording entry via the app bundle above."
 echo ""
 open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
 

@@ -3,6 +3,10 @@
 # Runs via LaunchAgent on schedule + on login (catch-up).
 # Idempotent: skips if digest.md already exists for a given date.
 
+# launchd uses a minimal PATH that may not include ~/.local/bin (Claude Code)
+# or /opt/homebrew/bin (Homebrew). Ensure they are available.
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:$PATH"
+
 CONFIG_FILE="$HOME/.screen-capture/config.yaml"
 SKILL_FILE="$HOME/.claude/skills/screen-analysis/SKILL.md"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
