@@ -1,4 +1,4 @@
-# Screen Capture
+# ScreenSight
 
 AI-powered screen capture and analysis tool for macOS. Takes a screenshot every 30 seconds, then runs an end-of-day AI analysis to produce process maps, coaching feedback, automation opportunities, and business process detection.
 
@@ -31,8 +31,8 @@ Every 30 seconds:                    End of day (or on login):
 ## Install
 
 ```bash
-git clone https://github.com/himanshu-sikaria/screen-capture.git
-cd screen-capture
+git clone https://github.com/himanshu-sikaria/screensight.git
+cd screensight
 ./install.sh
 ```
 
