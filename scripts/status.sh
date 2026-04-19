@@ -62,6 +62,8 @@ EXCLUDE_APPS=$(parse_yaml_list "exclude_apps")
 
 TODAY=$(date +%Y-%m-%d)
 PIDFILE="/tmp/screen-capture.pid"
+HEARTBEAT_FILE="/tmp/screen-capture.last-success"
+BLANK_COUNTER_FILE="/tmp/screen-capture.blank-streak"
 
 echo "=== Screen Capture Status ==="
 echo ""
@@ -71,6 +73,37 @@ if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
     echo "Daemon:     Running (PID $(cat "$PIDFILE"))"
 else
     echo "Daemon:     Not running"
+fi
+
+# --- Health: last successful capture + blank streak ---
+if [ -f "$HEARTBEAT_FILE" ]; then
+    LAST_SUCCESS_EPOCH=$(cat "$HEARTBEAT_FILE" 2>/dev/null)
+    NOW_EPOCH=$(date +%s)
+    if [ -n "$LAST_SUCCESS_EPOCH" ]; then
+        AGE=$(( NOW_EPOCH - LAST_SUCCESS_EPOCH ))
+        if [ "$AGE" -lt 60 ]; then
+            AGE_STR="${AGE}s ago"
+        elif [ "$AGE" -lt 3600 ]; then
+            AGE_STR="$((AGE / 60))m ago"
+        else
+            AGE_STR="$((AGE / 3600))h $(( (AGE % 3600) / 60 ))m ago"
+        fi
+        echo "Last ok:    $AGE_STR"
+    fi
+else
+    echo "Last ok:    (no heartbeat yet — daemon hasn't successfully captured since restart)"
+fi
+
+BLANK_STREAK=$(cat "$BLANK_COUNTER_FILE" 2>/dev/null || echo "0")
+BLANK_STREAK=${BLANK_STREAK//[^0-9]/}
+BLANK_STREAK=${BLANK_STREAK:-0}
+if [ "$BLANK_STREAK" -ge 10 ]; then
+    echo "Health:     ⚠ ${BLANK_STREAK} consecutive blank captures — Screen Recording permission likely revoked"
+    echo "            Fix: System Settings → Privacy & Security → Screen Recording → ScreenCaptureDaemon"
+elif [ "$BLANK_STREAK" -gt 0 ]; then
+    echo "Health:     ${BLANK_STREAK} recent blank captures (transient)"
+else
+    echo "Health:     OK"
 fi
 
 # --- Today's screenshots ---

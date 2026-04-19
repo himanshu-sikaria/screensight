@@ -124,6 +124,41 @@ fi
 LOG_DIR="$OUTPUT_DIR/logs"
 mkdir -p "$LOG_DIR"
 
+CAPTURE_ERR_LOG="$LOG_DIR/capture-errors.log"
+HEARTBEAT_FILE="/tmp/screen-capture.last-success"
+BLANK_COUNTER_FILE="/tmp/screen-capture.blank-streak"
+PERMISSION_ALERT_FILE="/tmp/screen-capture.permission-alerted"
+
+# N consecutive blank captures triggers a user-visible notification.
+# 10 x 30s = 5 minutes of blank output — long enough to rule out a brief
+# black-screen edge case, short enough to catch a revoked TCC grant fast.
+BLANK_ALERT_THRESHOLD=10
+
+# Rotate a log file if it exceeds ~5MB. launchd appends via StandardOutPath;
+# in-place truncate keeps its file descriptor valid.
+rotate_log_if_large() {
+    local f="$1"
+    [ -f "$f" ] || return 0
+    local size
+    size=$(stat -f%z "$f" 2>/dev/null || echo "0")
+    if [ "$size" -gt 5242880 ]; then
+        cp "$f" "${f}.1" 2>/dev/null
+        : > "$f"
+    fi
+}
+
+log_line() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+}
+
+notify_permission_lost() {
+    [ -f "$PERMISSION_ALERT_FILE" ] && return 0
+    touch "$PERMISSION_ALERT_FILE"
+    log_line "ALERT: ${BLANK_ALERT_THRESHOLD}+ consecutive blank captures — Screen Recording permission likely revoked."
+    log_line "       Re-grant at: System Settings → Privacy & Security → Screen Recording → ScreenCaptureDaemon"
+    osascript -e 'display notification "Re-grant Screen Recording permission in System Settings → Privacy & Security → Screen Recording." with title "Screen capture stopped working" sound name "Basso"' 2>/dev/null || true
+}
+
 # Detect capture method: prefer CoreGraphics (works under launchd) over screencapture
 CAPTURE_METHOD="screencapture"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -140,20 +175,23 @@ if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
     exit 0
 fi
 echo $$ > "$PIDFILE"
+# Clear any stale permission-alert latch from a prior run so a fresh daemon can notify again.
+rm -f "$PERMISSION_ALERT_FILE"
 trap 'rm -f "$PIDFILE"; exit 0' INT TERM EXIT
 
-echo "Screen capture running (PID $$)"
-echo "  Interval: ${INTERVAL}s | Idle timeout: ${IDLE_LIMIT_MIN}m | Quality: $QUALITY"
-echo "  Captures: $CAPTURE_DIR/YYYY-MM-DD/"
-echo "  Retention: ${RETENTION_DAYS} days"
+log_line "Screen capture running (PID $$) — method=$CAPTURE_METHOD"
+log_line "  Interval: ${INTERVAL}s | Idle timeout: ${IDLE_LIMIT_MIN}m | Quality: $QUALITY"
+log_line "  Captures: $CAPTURE_DIR/YYYY-MM-DD/"
+log_line "  Retention: ${RETENTION_DAYS} days"
 if [ -n "$EXCLUDE_APPS" ]; then
-    echo "  Excluded apps: $EXCLUDE_APPS"
+    log_line "  Excluded apps: $EXCLUDE_APPS"
 fi
 if [ -n "$EXCLUDE_WINDOWS" ]; then
-    echo "  Excluded window patterns: $EXCLUDE_WINDOWS"
+    log_line "  Excluded window patterns: $EXCLUDE_WINDOWS"
 fi
 
 LAST_CLEANUP_DAY=""
+LAST_LOG_ROTATE_DAY=""
 
 while true; do
     # --- Guard: paused ---
@@ -169,6 +207,14 @@ while true; do
             find "$CAPTURE_DIR" -type d -mindepth 1 -maxdepth 1 -mtime +${RETENTION_DAYS} -exec rm -rf {} \; 2>/dev/null
         fi
         LAST_CLEANUP_DAY="$TODAY"
+    fi
+
+    # --- Rotate logs once per new day (cheap; skips if under threshold) ---
+    if [ "$TODAY" != "$LAST_LOG_ROTATE_DAY" ]; then
+        rotate_log_if_large "$LOG_DIR/capture.log"
+        rotate_log_if_large "$LOG_DIR/capture.err"
+        rotate_log_if_large "$CAPTURE_ERR_LOG"
+        LAST_LOG_ROTATE_DAY="$TODAY"
     fi
 
     # --- Guard: idle ---
@@ -215,11 +261,20 @@ while true; do
     mkdir -p "$DIR"
     TS=$(date +%H-%M-%S)
 
+    # Capture stderr from the capture tool; a non-empty stderr usually means
+    # "CGWindowListCreateImage returned nil" (permission revoked) or similar.
     if [ "$CAPTURE_METHOD" = "coregraphics" ]; then
-        python3 "$SCRIPT_DIR/capture-screen.py" "$DIR/${TS}.png" 2>/dev/null
+        CAPTURE_STDERR=$(python3 "$SCRIPT_DIR/capture-screen.py" "$DIR/${TS}.png" 2>&1 >/dev/null) || true
     else
-        /usr/sbin/screencapture -x "$DIR/${TS}.png" 2>/dev/null
+        CAPTURE_STDERR=$(/usr/sbin/screencapture -x "$DIR/${TS}.png" 2>&1 >/dev/null) || true
     fi
+    if [ -n "$CAPTURE_STDERR" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] $CAPTURE_METHOD: $CAPTURE_STDERR" >> "$CAPTURE_ERR_LOG"
+    fi
+
+    BLANK_STREAK=$(cat "$BLANK_COUNTER_FILE" 2>/dev/null || echo "0")
+    BLANK_STREAK=${BLANK_STREAK//[^0-9]/}
+    BLANK_STREAK=${BLANK_STREAK:-0}
 
     if [ -s "$DIR/${TS}.png" ]; then
         /usr/bin/sips -Z "$WIDTH" "$DIR/${TS}.png" --out "$DIR/${TS}.png" >/dev/null 2>&1
@@ -230,6 +285,11 @@ while true; do
         FSIZE=$(stat -f%z "$DIR/${TS}.jpg" 2>/dev/null || echo "0")
         if [ "$FSIZE" -lt "$MIN_FILE_SIZE" ]; then
             rm -f "$DIR/${TS}.jpg"
+            BLANK_STREAK=$((BLANK_STREAK + 1))
+            echo "$BLANK_STREAK" > "$BLANK_COUNTER_FILE"
+            if [ "$BLANK_STREAK" -ge "$BLANK_ALERT_THRESHOLD" ]; then
+                notify_permission_lost
+            fi
         else
             # --- Write metadata sidecar ---
             META_TITLE=$(osascript -e 'tell application "System Events" to get title of front window of (first application process whose frontmost is true)' 2>/dev/null || echo "")
@@ -270,9 +330,23 @@ while true; do
             FRONTMOST_ESC=$(printf '%s' "$FRONTMOST" | sed 's/\\/\\\\/g; s/"/\\"/g')
             printf '{"app":"%s","window_title":"%s","url":"%s","timestamp":"%s"}\n' \
                 "$FRONTMOST_ESC" "$META_TITLE" "$META_URL" "$META_TS" > "$DIR/${TS}.meta.json"
+
+            # Success — clear blank streak, update heartbeat, re-arm permission alert.
+            if [ "$BLANK_STREAK" -gt 0 ]; then
+                echo "0" > "$BLANK_COUNTER_FILE"
+                rm -f "$PERMISSION_ALERT_FILE"
+            fi
+            date +%s > "$HEARTBEAT_FILE"
         fi
     else
+        # Capture tool failed entirely (returned nil image / no file produced).
+        # Treat as a blank for streak-accounting purposes so the permission alert fires.
         rm -f "$DIR/${TS}.png"
+        BLANK_STREAK=$((BLANK_STREAK + 1))
+        echo "$BLANK_STREAK" > "$BLANK_COUNTER_FILE"
+        if [ "$BLANK_STREAK" -ge "$BLANK_ALERT_THRESHOLD" ]; then
+            notify_permission_lost
+        fi
     fi
 
     sleep "$INTERVAL"
