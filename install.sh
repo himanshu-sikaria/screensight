@@ -198,9 +198,25 @@ launchctl load "$LAUNCH_AGENTS_DIR/com.screen-capture.analyze.plist"
 echo "LaunchAgents installed and loaded."
 
 # --- Menu bar app (optional, requires rumps) ---
-if python3 -c "import rumps" 2>/dev/null; then
+# Use the same pinned python3 as the capture daemon so the plist invokes a
+# python that actually has rumps installed. Attempt auto-install if missing.
+MENUBAR_READY=false
+if [ -n "$DAEMON_PYTHON" ]; then
+    if "$DAEMON_PYTHON" -c "import rumps" 2>/dev/null; then
+        MENUBAR_READY=true
+    else
+        echo "Installing rumps into $DAEMON_PYTHON for the menu bar app..."
+        if "$DAEMON_PYTHON" -m pip install rumps --break-system-packages 2>/dev/null && \
+           "$DAEMON_PYTHON" -c "import rumps" 2>/dev/null; then
+            MENUBAR_READY=true
+        fi
+    fi
+fi
+
+if $MENUBAR_READY; then
     sed -e "s|INSTALL_PATH|$SCRIPT_DIR|g" \
         -e "s|LOG_PATH|$OUTPUT_DIR/logs|g" \
+        -e "s|PYTHON_BIN|$DAEMON_PYTHON|g" \
         "$SCRIPT_DIR/scripts/com.screen-capture.menubar.plist" \
         > "$LAUNCH_AGENTS_DIR/com.screen-capture.menubar.plist"
     launchctl unload "$LAUNCH_AGENTS_DIR/com.screen-capture.menubar.plist" 2>/dev/null || true
@@ -208,9 +224,13 @@ if python3 -c "import rumps" 2>/dev/null; then
     echo "Menu bar app installed (shows capture status, pause/resume)."
 else
     echo ""
-    echo "Optional: Install the menu bar app for status indicator + pause/resume:"
-    echo "  pip3 install rumps --break-system-packages"
-    echo "  Then re-run ./install.sh"
+    echo "Optional: Install the menu bar app for status indicator + pause/resume."
+    if [ -n "$DAEMON_PYTHON" ]; then
+        echo "  Manual install: $DAEMON_PYTHON -m pip install rumps --break-system-packages"
+        echo "  Then re-run ./install.sh"
+    else
+        echo "  (No usable python3 found — see Quartz warning above.)"
+    fi
 fi
 
 # --- Screen Recording permission ---
