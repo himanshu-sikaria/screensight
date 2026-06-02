@@ -38,10 +38,19 @@ Extract `output.directory` (default `~/screen-capture`).
 
 The base skill has already read the day's `.meta.json` sidecars. Re-read them here (cheap; small JSON files) at `<output_dir>/raw/<date>/*.meta.json`.
 
-For each entry, apply every pattern in `support.ticket_patterns`:
-- `url_match` → test against the `url` field
-- `title_match` → test against the `window_title` field
-- If a pattern matches, render the ticket ID by substituting capture groups into `id_format` (e.g., `id_format: "ZD-{1}"` with capture group `12345` → `ZD-12345`)
+Anchors come from **three sources**, in priority order:
+
+1. **Metadata `url_match`** — test the regex against the `url` field in each sidecar. Cheapest, deterministic. Works for browsers (Safari/Chrome/Arc/Firefox/Edge) where the daemon extracts the URL via AppleScript.
+2. **Metadata `title_match`** — test the regex against the `window_title` field. Works when the app puts the ID in its window title (e.g., Linear web tab title `ATLAN-1234 · Issue title — Linear`).
+3. **Vision-extracted IDs from screenshot content** — for screenshots you are **already going to read** for other reasons (transitions, meeting content, attribution checks), also scan visible on-screen text for ticket IDs. Required for standalone desktop apps that don't expose URLs and don't put the ID in the window title: the Linear macOS app, the Slack desktop app (when discussing tickets in threads), Zendesk in a Boost/PWA mode, etc.
+
+For each pattern matched (regardless of source), render the ticket ID by substituting capture groups into `id_format` (e.g., `id_format: "ZD-{1}"` with capture group `12345` → `ZD-12345`).
+
+### Vision-extraction guardrails (keep it cost-neutral and hallucination-safe)
+
+- **Never read a screenshot solely to hunt for ticket IDs.** Only extract IDs from screenshots you were already going to read for activity context, attribution, or transition analysis. No new vision reads triggered just for anchor detection — the cost stays inside the existing reading budget.
+- **Gate every vision-extracted ID through the same regex patterns** in `support.ticket_patterns`. A character that the model misread (e.g., `ENG-l234` instead of `ENG-1234`) won't match `[A-Z]+-\d+` and gets discarded. If the ID doesn't pass the regex, drop it silently.
+- **Where to look on screen**: app sidebars, breadcrumbs, page headers, issue title bars in the Linear app, "Ticket #12345" badges or URL-bar fragments in Zendesk, the issue ID column in list views, the Slack thread permalink in the address bar, the active tab's title strip in Arc. Don't pattern-match against arbitrary body text (avoid grabbing IDs from copy-pasted log fragments or quoted messages that aren't the active investigation context).
 
 Output: an ordered list of **anchor events**:
 
@@ -49,12 +58,15 @@ Output: an ordered list of **anchor events**:
 [
   { "timestamp": "09:14:30", "ticket_id": "ZD-12345", "source": "zendesk:url" },
   { "timestamp": "09:16:00", "ticket_id": "ZD-12345", "source": "zendesk:url" },
-  { "timestamp": "09:32:15", "ticket_id": "ATLAN-7821", "source": "linear:url" },
+  { "timestamp": "09:32:15", "ticket_id": "ATLAN-7821", "source": "linear:title" },
+  { "timestamp": "10:02:18", "ticket_id": "ATLAN-7821", "source": "linear:vision" },
   ...
 ]
 ```
 
-A single screenshot can produce multiple anchors (e.g., a Linear page with `ATLAN-7821` in URL plus the parent ZD ticket ID in the page title) — keep both, they'll resolve to the same investigation later if they're truly related.
+Tag each anchor with its `source` (`<pattern_name>:<url|title|vision>`) so the audit trail in attribution rationales can cite where each anchor came from. Vision-sourced anchors should be treated equivalently to metadata anchors for downstream segmentation and attribution.
+
+A single screenshot can produce multiple anchors (e.g., a Linear page with `ATLAN-7821` in URL plus the parent ZD ticket ID visible in the page header) — keep both, they'll resolve to the same investigation later if they're truly related.
 
 ---
 
