@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONFIG_DIR="$HOME/.screen-capture"
 CONFIG_FILE="$CONFIG_DIR/config.yaml"
 SKILL_DIR="$HOME/.claude/skills/screen-analysis"
+SUPPORT_SKILL_DIR="$HOME/.claude/skills/support-ticket-analysis"
 LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 OUTPUT_DIR="$HOME/screen-capture"
 
@@ -32,16 +33,37 @@ if ! command -v screencapture &>/dev/null; then
 fi
 
 # --- Install Python capture dependency (for launchd compatibility) ---
-if python3 -c "import Quartz" 2>/dev/null; then
-    echo "CoreGraphics capture: ready (pyobjc-framework-Quartz installed)"
+# Pin to the same python3 the daemon will resolve under launchd. capture-daemon.sh
+# exports PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" before invoking python3,
+# so the install target is the first python3 found along that same order.
+DAEMON_PYTHON=""
+for candidate in /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do
+    if [ -x "$candidate" ]; then
+        DAEMON_PYTHON="$candidate"
+        break
+    fi
+done
+
+if [ -z "$DAEMON_PYTHON" ]; then
+    echo "Warning: No python3 found in /opt/homebrew/bin, /usr/local/bin, or /usr/bin."
+    echo "  Capture will use /usr/sbin/screencapture (may fail under launchd on macOS 15+)."
 else
-    echo "Installing pyobjc-framework-Quartz for launchd-compatible screen capture..."
-    if pip3 install pyobjc-framework-Quartz --break-system-packages 2>/dev/null; then
-        echo "CoreGraphics capture: installed"
+    echo "Using python3 for CoreGraphics capture: $DAEMON_PYTHON"
+    if "$DAEMON_PYTHON" -c "import Quartz" 2>/dev/null; then
+        echo "CoreGraphics capture: ready (pyobjc-framework-Quartz already installed)"
     else
-        echo "Warning: Could not install pyobjc-framework-Quartz."
-        echo "  Capture will use /usr/sbin/screencapture (may fail under launchd on macOS 15+)."
-        echo "  To fix: pip3 install pyobjc-framework-Quartz"
+        echo "Installing pyobjc-framework-Quartz into $DAEMON_PYTHON..."
+        if "$DAEMON_PYTHON" -m pip install pyobjc-framework-Quartz --break-system-packages 2>/dev/null; then
+            if "$DAEMON_PYTHON" -c "import Quartz" 2>/dev/null; then
+                echo "CoreGraphics capture: installed"
+            else
+                echo "Warning: pip succeeded but import still fails. Check $DAEMON_PYTHON config."
+            fi
+        else
+            echo "Warning: Could not install pyobjc-framework-Quartz into $DAEMON_PYTHON."
+            echo "  Capture will use /usr/sbin/screencapture (may fail under launchd on macOS 15+)."
+            echo "  To fix manually: $DAEMON_PYTHON -m pip install pyobjc-framework-Quartz --break-system-packages"
+        fi
     fi
 fi
 
@@ -52,16 +74,18 @@ echo "  [1] Engineering (IC or manager)"
 echo "  [2] Product Manager"
 echo "  [3] Customer Success / CX"
 echo "  [4] Sales / GTM"
-echo "  [5] Custom (blank config)"
+echo "  [5] Support Engineer (ticket-centric analysis)"
+echo "  [6] Custom (blank config)"
 echo ""
-read -rp "Enter choice [1-5]: " CHOICE
+read -rp "Enter choice [1-6]: " CHOICE
 
 case "$CHOICE" in
     1) TEMPLATE="$SCRIPT_DIR/configs/templates/engineering.yaml" ;;
     2) TEMPLATE="$SCRIPT_DIR/configs/templates/product.yaml" ;;
     3) TEMPLATE="$SCRIPT_DIR/configs/templates/customer-success.yaml" ;;
     4) TEMPLATE="$SCRIPT_DIR/configs/templates/sales.yaml" ;;
-    5) TEMPLATE="$SCRIPT_DIR/configs/default.yaml" ;;
+    5) TEMPLATE="$SCRIPT_DIR/configs/templates/support.yaml" ;;
+    6) TEMPLATE="$SCRIPT_DIR/configs/default.yaml" ;;
     *) echo "Invalid choice. Using default."; TEMPLATE="$SCRIPT_DIR/configs/default.yaml" ;;
 esac
 
@@ -88,6 +112,14 @@ mkdir -p "$SKILL_DIR"
 cp "$SCRIPT_DIR/skill/SKILL.md" "$SKILL_DIR/SKILL.md"
 echo "Skill installed: $SKILL_DIR/SKILL.md"
 
+# Install support-ticket skill if persona: support is set in the active config
+PERSONA=$(grep "^persona:" "$CONFIG_FILE" 2>/dev/null | head -1 | sed 's/.*: *//' | tr -d '"' || echo "")
+if [ "$PERSONA" = "support" ] && [ -f "$SCRIPT_DIR/skill/support/SKILL.md" ]; then
+    mkdir -p "$SUPPORT_SKILL_DIR"
+    cp "$SCRIPT_DIR/skill/support/SKILL.md" "$SUPPORT_SKILL_DIR/SKILL.md"
+    echo "Support skill installed: $SUPPORT_SKILL_DIR/SKILL.md"
+fi
+
 # --- Create output directories ---
 mkdir -p "$OUTPUT_DIR/raw"
 mkdir -p "$OUTPUT_DIR/processes"
@@ -98,6 +130,8 @@ echo "Output directory: $OUTPUT_DIR/"
 chmod +x "$SCRIPT_DIR/scripts/capture-daemon.sh"
 chmod +x "$SCRIPT_DIR/scripts/analyze.sh"
 chmod +x "$SCRIPT_DIR/scripts/capture-screen.py"
+[ -f "$SCRIPT_DIR/scripts/review-ticket.sh" ] && chmod +x "$SCRIPT_DIR/scripts/review-ticket.sh"
+[ -f "$SCRIPT_DIR/scripts/publish.sh" ] && chmod +x "$SCRIPT_DIR/scripts/publish.sh"
 
 # --- Create app bundle for Screen Recording TCC ---
 # macOS grants Screen Recording permission to app bundles, not raw binaries.
@@ -164,9 +198,25 @@ launchctl load "$LAUNCH_AGENTS_DIR/com.screen-capture.analyze.plist"
 echo "LaunchAgents installed and loaded."
 
 # --- Menu bar app (optional, requires rumps) ---
-if python3 -c "import rumps" 2>/dev/null; then
+# Use the same pinned python3 as the capture daemon so the plist invokes a
+# python that actually has rumps installed. Attempt auto-install if missing.
+MENUBAR_READY=false
+if [ -n "$DAEMON_PYTHON" ]; then
+    if "$DAEMON_PYTHON" -c "import rumps" 2>/dev/null; then
+        MENUBAR_READY=true
+    else
+        echo "Installing rumps into $DAEMON_PYTHON for the menu bar app..."
+        if "$DAEMON_PYTHON" -m pip install rumps --break-system-packages 2>/dev/null && \
+           "$DAEMON_PYTHON" -c "import rumps" 2>/dev/null; then
+            MENUBAR_READY=true
+        fi
+    fi
+fi
+
+if $MENUBAR_READY; then
     sed -e "s|INSTALL_PATH|$SCRIPT_DIR|g" \
         -e "s|LOG_PATH|$OUTPUT_DIR/logs|g" \
+        -e "s|PYTHON_BIN|$DAEMON_PYTHON|g" \
         "$SCRIPT_DIR/scripts/com.screen-capture.menubar.plist" \
         > "$LAUNCH_AGENTS_DIR/com.screen-capture.menubar.plist"
     launchctl unload "$LAUNCH_AGENTS_DIR/com.screen-capture.menubar.plist" 2>/dev/null || true
@@ -174,9 +224,13 @@ if python3 -c "import rumps" 2>/dev/null; then
     echo "Menu bar app installed (shows capture status, pause/resume)."
 else
     echo ""
-    echo "Optional: Install the menu bar app for status indicator + pause/resume:"
-    echo "  pip3 install rumps --break-system-packages"
-    echo "  Then re-run ./install.sh"
+    echo "Optional: Install the menu bar app for status indicator + pause/resume."
+    if [ -n "$DAEMON_PYTHON" ]; then
+        echo "  Manual install: $DAEMON_PYTHON -m pip install rumps --break-system-packages"
+        echo "  Then re-run ./install.sh"
+    else
+        echo "  (No usable python3 found — see Quartz warning above.)"
+    fi
 fi
 
 # --- Screen Recording permission ---
@@ -184,16 +238,25 @@ echo ""
 echo "=== IMPORTANT: Grant Screen Recording Permission ==="
 echo ""
 echo "macOS requires you to manually grant Screen Recording access."
-echo "Opening System Settings now..."
+echo "Opening System Settings and revealing the app bundle in Finder now..."
 echo ""
-echo "  1. Click the '+' button"
-echo "  2. Navigate to ~/Applications and select 'ScreenCaptureDaemon.app'"
+echo "  1. Click the '+' button in System Settings → Screen Recording"
+echo "  2. Either:"
+echo "     (a) Drag ScreenCaptureDaemon.app from the Finder window I just opened"
+echo "         directly into the Screen Recording list, OR"
+echo "     (b) In the file picker, press Cmd+Shift+G, paste ~/Applications,"
+echo "         press Enter, then select ScreenCaptureDaemon.app"
 echo "  3. Toggle it ON"
+echo ""
+echo "  Why the file picker can't find it by default: macOS defaults to"
+echo "  /Applications (system-wide), but the bundle is in ~/Applications"
+echo "  (user-level) — both are valid Apple-recognized locations."
 echo ""
 echo "  Note: On macOS 15+, granting permission to Terminal/iTerm alone is"
 echo "  not sufficient. The launchd daemon runs outside any terminal app, so"
 echo "  it needs its own Screen Recording entry via the app bundle above."
 echo ""
+open -R "$APP_DIR" 2>/dev/null || true
 open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
 
 # --- Done ---

@@ -6,7 +6,7 @@
     <string>com.screen-capture.menubar</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/bin/python3</string>
+        <string>PYTHON_BIN</string>
         <string>INSTALL_PATH/app/menubar.py</string>
     </array>
     <key>RunAtLoad</key>

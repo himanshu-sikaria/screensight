@@ -1,0 +1,75 @@
+# ScreenSight — Support Template
+# For Customer Support Engineers. Adds ticket-centric analysis on top of the
+# day-level reports: per-ticket process / feedback / opportunities, plus a
+# daily context-switching report.
+
+role: "Customer Support Engineer"
+company: "Atlan"
+persona: support
+
+focus_areas:
+  - resolving customer tickets efficiently
+  - reducing context switching across tickets
+  - documenting repeatable process per ticket category
+
+coaching:
+  - context switching cost
+  - re-entry overhead on resumed tickets
+  - knowledge gap recovery time
+
+capture:
+  interval_seconds: 30
+  idle_timeout_minutes: 30
+  retention_days: 7
+  quality: 30
+  width: 1280
+  exclude_apps: []
+  exclude_windows: []              # e.g., ["*password*", "*banking*"]
+
+  # App classification for time-allocation scoring
+  app_categories:
+    productive: ["Zendesk", "Linear", "Slack", "VS Code", "Terminal", "iTerm2", "DataGrip", "Grafana"]
+    neutral: ["Google Chrome", "Arc", "Safari", "Notion", "Confluence"]
+    private: []                    # e.g., ["1Password", "Messages"]
+
+analysis:
+  schedule_hour: 18                # Support is daytime work — earlier than the default 23:00
+  schedule_days: "1,2,3,4,5"
+  model: opus
+  meeting_source: none
+
+# Support persona configuration
+support:
+  ticket_patterns:
+    - name: zendesk
+      url_match: "atlan\\.zendesk\\.com/agent/tickets/(\\d+)"
+      id_format: "ZD-{1}"
+    - name: linear
+      url_match: "linear\\.app/atlan/issue/([A-Z]+-\\d+)"
+      id_format: "{1}"
+    - name: jira
+      title_match: "\\b(ATLAN-\\d+|HRZ-\\d+|RTK-\\d+)\\b"
+      id_format: "{1}"
+  spread_window_minutes: 15
+  switch_noise_threshold_seconds: 120
+  pre_ticket_attribution: true
+  untracked_bucketing: slug
+  min_session_seconds: 60
+
+# Redaction — person names are scrubbed before output is written.
+# Account/customer names remain because data stays inside Atlan systems.
+redaction:
+  redact_person_names: true
+  redact_account_names: false
+
+# Confluence publishing — Support Team space, "Reviews" folder
+publish:
+  confluence:
+    enabled: true
+    cloud_id: "atlanhq.atlassian.net"
+    space_key: "ST"
+    parent_id: "2040561665"
+    title_prefix: ""
+
+output:
+  directory: ~/screen-capture
