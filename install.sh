@@ -33,16 +33,37 @@ if ! command -v screencapture &>/dev/null; then
 fi
 
 # --- Install Python capture dependency (for launchd compatibility) ---
-if python3 -c "import Quartz" 2>/dev/null; then
-    echo "CoreGraphics capture: ready (pyobjc-framework-Quartz installed)"
+# Pin to the same python3 the daemon will resolve under launchd. capture-daemon.sh
+# exports PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" before invoking python3,
+# so the install target is the first python3 found along that same order.
+DAEMON_PYTHON=""
+for candidate in /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do
+    if [ -x "$candidate" ]; then
+        DAEMON_PYTHON="$candidate"
+        break
+    fi
+done
+
+if [ -z "$DAEMON_PYTHON" ]; then
+    echo "Warning: No python3 found in /opt/homebrew/bin, /usr/local/bin, or /usr/bin."
+    echo "  Capture will use /usr/sbin/screencapture (may fail under launchd on macOS 15+)."
 else
-    echo "Installing pyobjc-framework-Quartz for launchd-compatible screen capture..."
-    if pip3 install pyobjc-framework-Quartz --break-system-packages 2>/dev/null; then
-        echo "CoreGraphics capture: installed"
+    echo "Using python3 for CoreGraphics capture: $DAEMON_PYTHON"
+    if "$DAEMON_PYTHON" -c "import Quartz" 2>/dev/null; then
+        echo "CoreGraphics capture: ready (pyobjc-framework-Quartz already installed)"
     else
-        echo "Warning: Could not install pyobjc-framework-Quartz."
-        echo "  Capture will use /usr/sbin/screencapture (may fail under launchd on macOS 15+)."
-        echo "  To fix: pip3 install pyobjc-framework-Quartz"
+        echo "Installing pyobjc-framework-Quartz into $DAEMON_PYTHON..."
+        if "$DAEMON_PYTHON" -m pip install pyobjc-framework-Quartz --break-system-packages 2>/dev/null; then
+            if "$DAEMON_PYTHON" -c "import Quartz" 2>/dev/null; then
+                echo "CoreGraphics capture: installed"
+            else
+                echo "Warning: pip succeeded but import still fails. Check $DAEMON_PYTHON config."
+            fi
+        else
+            echo "Warning: Could not install pyobjc-framework-Quartz into $DAEMON_PYTHON."
+            echo "  Capture will use /usr/sbin/screencapture (may fail under launchd on macOS 15+)."
+            echo "  To fix manually: $DAEMON_PYTHON -m pip install pyobjc-framework-Quartz --break-system-packages"
+        fi
     fi
 fi
 
@@ -197,16 +218,25 @@ echo ""
 echo "=== IMPORTANT: Grant Screen Recording Permission ==="
 echo ""
 echo "macOS requires you to manually grant Screen Recording access."
-echo "Opening System Settings now..."
+echo "Opening System Settings and revealing the app bundle in Finder now..."
 echo ""
-echo "  1. Click the '+' button"
-echo "  2. Navigate to ~/Applications and select 'ScreenCaptureDaemon.app'"
+echo "  1. Click the '+' button in System Settings → Screen Recording"
+echo "  2. Either:"
+echo "     (a) Drag ScreenCaptureDaemon.app from the Finder window I just opened"
+echo "         directly into the Screen Recording list, OR"
+echo "     (b) In the file picker, press Cmd+Shift+G, paste ~/Applications,"
+echo "         press Enter, then select ScreenCaptureDaemon.app"
 echo "  3. Toggle it ON"
+echo ""
+echo "  Why the file picker can't find it by default: macOS defaults to"
+echo "  /Applications (system-wide), but the bundle is in ~/Applications"
+echo "  (user-level) — both are valid Apple-recognized locations."
 echo ""
 echo "  Note: On macOS 15+, granting permission to Terminal/iTerm alone is"
 echo "  not sufficient. The launchd daemon runs outside any terminal app, so"
 echo "  it needs its own Screen Recording entry via the app bundle above."
 echo ""
+open -R "$APP_DIR" 2>/dev/null || true
 open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
 
 # --- Done ---

@@ -5,6 +5,10 @@
 #
 # Reads config from ~/.screen-capture/config.yaml
 
+# launchd PATH is minimal — make sure Homebrew python3 (where Quartz lives) is
+# reachable so the CoreGraphics capture method is detected and used.
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
 CONFIG_FILE="$HOME/.screen-capture/config.yaml"
 
 # --- Simple YAML parser ---
