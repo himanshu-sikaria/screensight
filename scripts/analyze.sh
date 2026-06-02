@@ -44,6 +44,7 @@ OUTPUT_DIR=$(parse_yaml_value "directory" "$HOME/screen-capture")
 OUTPUT_DIR="${OUTPUT_DIR/#\~/$HOME}"
 RAW_DIR="$OUTPUT_DIR/raw"
 MODEL=$(parse_yaml_value "model" "opus")
+PERSONA=$(parse_yaml_value "persona" "")
 LOG_DIR="$OUTPUT_DIR/logs"
 mkdir -p "$LOG_DIR"
 
@@ -70,20 +71,17 @@ analyze_date() {
         return 0
     fi
 
-    # Skip if analysis already ran (idempotent)
-    if [ -f "$DIGEST" ]; then
-        echo "[$DATE] Analysis already exists. Skipping."
-        return 0
-    fi
-
-    echo "[$DATE] Running analysis..."
     mkdir -p "$OUTPUT_DATE_DIR"
     mkdir -p "$OUTPUT_DIR/processes"
 
-    local LOG_FILE="$LOG_DIR/analysis-$DATE.log"
+    # --- Base pass: day-level analysis (idempotent on digest.md) ---
+    if [ -f "$DIGEST" ]; then
+        echo "[$DATE] Base analysis already exists. Skipping base pass."
+    else
+        echo "[$DATE] Running base analysis..."
+        local LOG_FILE="$LOG_DIR/analysis-$DATE.log"
 
-    # Build the prompt with all necessary context
-    local PROMPT="Run screen analysis for date $DATE.
+        local PROMPT="Run screen analysis for date $DATE.
 
 Config file: $CONFIG_FILE
 Raw screenshots directory: $RAW_DATE_DIR/
@@ -93,25 +91,64 @@ Process files directory: $OUTPUT_DIR/processes/
 Read the config file first to understand the user's role, focus areas, and coaching priorities.
 Then analyze the screenshots and produce all output files."
 
-    # Build allowed tools list
-    local TOOLS="Read,Write,Edit,Glob,Grep,Bash"
-    local MEETING_SOURCE
-    MEETING_SOURCE=$(parse_yaml_value "meeting_source" "none")
-    if [ "$MEETING_SOURCE" = "granola" ]; then
-        TOOLS="$TOOLS,mcp__claude_ai_Granola__list_meetings,mcp__claude_ai_Granola__get_meetings,mcp__claude_ai_Granola__get_meeting_transcript,mcp__claude_ai_Granola__query_granola_meetings"
+        local TOOLS="Read,Write,Edit,Glob,Grep,Bash"
+        local MEETING_SOURCE
+        MEETING_SOURCE=$(parse_yaml_value "meeting_source" "none")
+        if [ "$MEETING_SOURCE" = "granola" ]; then
+            TOOLS="$TOOLS,mcp__claude_ai_Granola__list_meetings,mcp__claude_ai_Granola__get_meetings,mcp__claude_ai_Granola__get_meeting_transcript,mcp__claude_ai_Granola__query_granola_meetings"
+        fi
+
+        claude --model "$MODEL" \
+            --allowedTools "$TOOLS" \
+            -p "$PROMPT" \
+            >> "$LOG_FILE" 2>&1
+
+        if [ -f "$DIGEST" ]; then
+            echo "[$DATE] Base analysis complete. Output: $OUTPUT_DATE_DIR/"
+        else
+            echo "[$DATE] Base analysis may have failed — no digest.md produced."
+            echo "         Check log: $LOG_FILE"
+            return 0
+        fi
     fi
 
-    # Run Claude Code with the analysis skill
-    claude --model "$MODEL" \
-        --allowedTools "$TOOLS" \
-        -p "$PROMPT" \
-        >> "$LOG_FILE" 2>&1
+    # --- Second pass: support persona ticket analysis ---
+    if [ "$PERSONA" = "support" ]; then
+        local SUPPORT_MARKER="$OUTPUT_DATE_DIR/.support-analyzed"
+        if [ -f "$SUPPORT_MARKER" ]; then
+            echo "[$DATE] Support pass already ran. Skipping."
+            return 0
+        fi
 
-    if [ -f "$DIGEST" ]; then
-        echo "[$DATE] Analysis complete. Output: $OUTPUT_DATE_DIR/"
-    else
-        echo "[$DATE] Analysis may have failed — no digest.md produced."
-        echo "         Check log: $LOG_FILE"
+        echo "[$DATE] Running support ticket analysis pass..."
+        local TICKETS_DIR="$OUTPUT_DIR/tickets"
+        mkdir -p "$TICKETS_DIR"
+
+        local SUPPORT_LOG="$LOG_DIR/support-analysis-$DATE.log"
+        local SUPPORT_PROMPT="Run support-ticket-analysis for date $DATE.
+
+Config file: $CONFIG_FILE
+Raw screenshots directory: $RAW_DATE_DIR/
+Daily output directory: $OUTPUT_DATE_DIR/
+Per-ticket directory (evolving): $TICKETS_DIR/
+
+Confirm persona: support in the config. Read the support and redaction blocks.
+Then segment the day into ticket sessions, detect context switches, attribute work,
+and update the per-ticket markdown files. Write context-switching.md and tickets-summary.md
+into the daily output directory, and append a Tickets Lens section to digest.md."
+
+        claude --model "$MODEL" \
+            --allowedTools "Read,Write,Edit,Glob,Grep,Bash" \
+            -p "$SUPPORT_PROMPT" \
+            >> "$SUPPORT_LOG" 2>&1
+
+        if [ -f "$OUTPUT_DATE_DIR/context-switching.md" ]; then
+            touch "$SUPPORT_MARKER"
+            echo "[$DATE] Support pass complete. Tickets: $TICKETS_DIR/"
+        else
+            echo "[$DATE] Support pass may have failed — no context-switching.md produced."
+            echo "         Check log: $SUPPORT_LOG"
+        fi
     fi
 }
 

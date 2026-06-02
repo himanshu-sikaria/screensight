@@ -9,6 +9,10 @@ focus_areas: []                   # e.g., ["code review throughput", "team coach
 # Coaching priorities (what feedback should emphasize)
 coaching: []                      # e.g., ["deep work protection", "meeting effectiveness"]
 
+# Persona — gates persona-specific analysis. "" = default day-level analysis only.
+# "support" = also run ticket-centric analysis (anchor → spread → switch attribution).
+persona: ""                       # "" | support
+
 # Capture settings
 capture:
   interval_seconds: 30            # Screenshot frequency
@@ -32,6 +36,36 @@ analysis:
   schedule_days: "1,2,3,4,5"     # Days of week (1=Mon, 7=Sun)
   model: opus                     # Claude model: opus | sonnet
   meeting_source: none            # none | granola
+
+# Support persona — only used when persona: support
+support:
+  # Anchor patterns. Each entry is regex with capture groups; id_format uses {1}, {2}, ...
+  # Match against `url` (url_match) or `window_title` (title_match) from .meta.json sidecars.
+  ticket_patterns: []
+  # Time window to attribute work before/after a visible ticket anchor.
+  spread_window_minutes: 15
+  # Switches shorter than this are treated as noise, not real context switches.
+  switch_noise_threshold_seconds: 120
+  # Retro-attach diagnostic work that happened before the ticket was opened.
+  pre_ticket_attribution: true
+  # How to bucket work that has no ticket ID: "slug" (one folder per topic) or "flat" (single log).
+  untracked_bucketing: slug
+  # Minimum continuous time on a ticket before generating per-ticket docs.
+  min_session_seconds: 60
+
+# PII redaction in output markdown (raw screenshots are never altered)
+redaction:
+  redact_person_names: false      # Substitute role-based references ("the customer", "an engineer")
+  redact_account_names: false     # Substitute generic placeholders for customer/account names
+
+# Confluence publishing (used by scripts/publish.sh)
+publish:
+  confluence:
+    enabled: false
+    cloud_id: ""                  # e.g., "yourorg.atlassian.net"
+    space_key: ""                 # e.g., "ST"
+    parent_id: ""                 # Page or folder ID under which ticket pages are nested
+    title_prefix: ""              # Optional prefix prepended to every page title
 
 # Output
 output:

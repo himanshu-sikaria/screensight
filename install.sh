@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONFIG_DIR="$HOME/.screen-capture"
 CONFIG_FILE="$CONFIG_DIR/config.yaml"
 SKILL_DIR="$HOME/.claude/skills/screen-analysis"
+SUPPORT_SKILL_DIR="$HOME/.claude/skills/support-ticket-analysis"
 LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 OUTPUT_DIR="$HOME/screen-capture"
 
@@ -52,16 +53,18 @@ echo "  [1] Engineering (IC or manager)"
 echo "  [2] Product Manager"
 echo "  [3] Customer Success / CX"
 echo "  [4] Sales / GTM"
-echo "  [5] Custom (blank config)"
+echo "  [5] Support Engineer (ticket-centric analysis)"
+echo "  [6] Custom (blank config)"
 echo ""
-read -rp "Enter choice [1-5]: " CHOICE
+read -rp "Enter choice [1-6]: " CHOICE
 
 case "$CHOICE" in
     1) TEMPLATE="$SCRIPT_DIR/configs/templates/engineering.yaml" ;;
     2) TEMPLATE="$SCRIPT_DIR/configs/templates/product.yaml" ;;
     3) TEMPLATE="$SCRIPT_DIR/configs/templates/customer-success.yaml" ;;
     4) TEMPLATE="$SCRIPT_DIR/configs/templates/sales.yaml" ;;
-    5) TEMPLATE="$SCRIPT_DIR/configs/default.yaml" ;;
+    5) TEMPLATE="$SCRIPT_DIR/configs/templates/support.yaml" ;;
+    6) TEMPLATE="$SCRIPT_DIR/configs/default.yaml" ;;
     *) echo "Invalid choice. Using default."; TEMPLATE="$SCRIPT_DIR/configs/default.yaml" ;;
 esac
 
@@ -88,6 +91,14 @@ mkdir -p "$SKILL_DIR"
 cp "$SCRIPT_DIR/skill/SKILL.md" "$SKILL_DIR/SKILL.md"
 echo "Skill installed: $SKILL_DIR/SKILL.md"
 
+# Install support-ticket skill if persona: support is set in the active config
+PERSONA=$(grep "^persona:" "$CONFIG_FILE" 2>/dev/null | head -1 | sed 's/.*: *//' | tr -d '"' || echo "")
+if [ "$PERSONA" = "support" ] && [ -f "$SCRIPT_DIR/skill/support/SKILL.md" ]; then
+    mkdir -p "$SUPPORT_SKILL_DIR"
+    cp "$SCRIPT_DIR/skill/support/SKILL.md" "$SUPPORT_SKILL_DIR/SKILL.md"
+    echo "Support skill installed: $SUPPORT_SKILL_DIR/SKILL.md"
+fi
+
 # --- Create output directories ---
 mkdir -p "$OUTPUT_DIR/raw"
 mkdir -p "$OUTPUT_DIR/processes"
@@ -98,6 +109,8 @@ echo "Output directory: $OUTPUT_DIR/"
 chmod +x "$SCRIPT_DIR/scripts/capture-daemon.sh"
 chmod +x "$SCRIPT_DIR/scripts/analyze.sh"
 chmod +x "$SCRIPT_DIR/scripts/capture-screen.py"
+[ -f "$SCRIPT_DIR/scripts/review-ticket.sh" ] && chmod +x "$SCRIPT_DIR/scripts/review-ticket.sh"
+[ -f "$SCRIPT_DIR/scripts/publish.sh" ] && chmod +x "$SCRIPT_DIR/scripts/publish.sh"
 
 # --- Create app bundle for Screen Recording TCC ---
 # macOS grants Screen Recording permission to app bundles, not raw binaries.
